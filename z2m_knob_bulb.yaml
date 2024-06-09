@@ -7,7 +7,7 @@ blueprint:
       name: MQTT Topic
       description: MQTT topic for the knob
       selector:
-        text
+        text: {}
     light_entity:
       name: Light Entity
       description: The light entity to control
