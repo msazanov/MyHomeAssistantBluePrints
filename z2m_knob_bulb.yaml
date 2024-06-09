@@ -67,16 +67,15 @@ action:
             value_template: "{{ command == 'toggle' }}"
         sequence:
           - service: light.toggle
-            target:
+            data:
               entity_id: !input light_entity
       - conditions:
           - condition: template
             value_template: "{{ command == 'brightness_step_down' }}"
         sequence:
           - service: light.turn_on
-            target:
-              entity_id: !input light_entity
             data:
+              entity_id: !input light_entity
               brightness_step_pct: "-{{ step_percent }}"
               transition: 0.5
       - conditions:
@@ -84,19 +83,19 @@ action:
             value_template: "{{ command == 'brightness_step_up' }}"
         sequence:
           - service: light.turn_on
-            target:
-              entity_id: !input light_entity
             data:
+              entity_id: !input light_entity
               brightness_step_pct: "{{ step_percent }}"
               transition: 0.5
       - conditions:
           - condition: template
-            value_template: "{{ command == 'color_temperature_step_down' and is_state(input.light_entity, 'on') }}"
+            value_template: >-
+              {{ command == 'color_temperature_step_down' and
+              is_state(input.light_entity, 'on') }}
         sequence:
           - service: light.turn_on
-            target:
-              entity_id: !input light_entity
             data_template:
+              entity_id: !input light_entity
               kelvin: >
                 {% set new_temp = state_attr(input.light_entity, 'color_temp_kelvin') - (step_percent * 50) %}
                 {% if new_temp < min_temp %}
@@ -107,12 +106,13 @@ action:
               transition: 0.5
       - conditions:
           - condition: template
-            value_template: "{{ command == 'color_temperature_step_up' and is_state(input.light_entity, 'on') }}"
+            value_template: >-
+              {{ command == 'color_temperature_step_up' and
+              is_state(input.light_entity, 'on') }}
         sequence:
           - service: light.turn_on
-            target:
-              entity_id: !input light_entity
             data_template:
+              entity_id: !input light_entity
               kelvin: >
                 {% set new_temp = state_attr(input.light_entity, 'color_temp_kelvin') + (step_percent * 50) %}
                 {% if new_temp > max_temp %}
