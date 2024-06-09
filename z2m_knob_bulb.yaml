@@ -1,0 +1,120 @@
+blueprint:
+  name: z2m Smart knob & Smart Bulb
+  description: Control light brightness and color temperature using a knob
+  domain: automation
+  input:
+    mqtt_topic:
+      name: MQTT Topic
+      description: MQTT topic for the knob
+      selector:
+        text:
+    light_entity:
+      name: Light Entity
+      description: The light entity to control
+      selector:
+        entity:
+          domain: light
+    min_temp:
+      name: Minimum Color Temperature (Kelvin)
+      description: Minimum color temperature
+      default: 2000
+      selector:
+        number:
+          min: 1500
+          max: 4000
+          unit_of_measurement: K
+    max_temp:
+      name: Maximum Color Temperature (Kelvin)
+      description: Maximum color temperature
+      default: 6500
+      selector:
+        number:
+          min: 5000
+          max: 8000
+          unit_of_measurement: K
+    step_factor:
+      name: Step Factor
+      description: Multiplier for step size for brightness and color temperature changes
+      default: 1
+      selector:
+        number:
+          min: 0.1
+          max: 5
+          step: 0.1
+          unit_of_measurement: x
+
+trigger:
+  - platform: mqtt
+    topic: !input mqtt_topic
+
+variables:
+  command: "{{ trigger.payload_json.action }}"
+  step_size: "{{ trigger.payload_json.action_step_size }}"
+  step_factor: !input step_factor
+  step_percent: >
+    {% if is_number(step_size) %}
+      {{ (step_size / 2 * step_factor) | int }}
+    {% else %}
+      {{ 0 }}
+    {% endif %}
+  min_temp: !input min_temp
+  max_temp: !input max_temp
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'toggle' }}"
+        sequence:
+          - service: light.toggle
+            data:
+              entity_id: !input light_entity
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'brightness_step_down' }}"
+        sequence:
+          - service: light.turn_on
+            data:
+              entity_id: !input light_entity
+              brightness_step_pct: "-{{ step_percent }}"
+              transition: 0.5
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'brightness_step_up' }}"
+        sequence:
+          - service: light.turn_on
+            data:
+              entity_id: !input light_entity
+              brightness_step_pct: "{{ step_percent }}"
+              transition: 0.5
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'color_temperature_step_down' and is_state(light_entity, 'on') }}"
+        sequence:
+          - service: light.turn_on
+            data_template:
+              entity_id: !input light_entity
+              kelvin: >
+                {% set new_temp = state_attr(light_entity, 'color_temp_kelvin') - (step_percent * 50) %}
+                {% if new_temp < min_temp %}
+                  {{ min_temp }}
+                {% else %}
+                  {{ new_temp }}
+                {% endif %}
+              transition: 0.5
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'color_temperature_step_up' and is_state(light_entity, 'on') }}"
+        sequence:
+          - service: light.turn_on
+            data_template:
+              entity_id: !input light_entity
+              kelvin: >
+                {% set new_temp = state_attr(light_entity, 'color_temp_kelvin') + (step_percent * 50) %}
+                {% if new_temp > max_temp %}
+                  {{ max_temp }}
+                {% else %}
+                  {{ new_temp }}
+                {% endif %}
+              transition: 0.5
+mode: single
