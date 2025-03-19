@@ -1,5 +1,5 @@
 blueprint:
-  name: Z2M MQTT - RGBGenie 3008/3009 v2
+  name: Z2M MQTT - RGBGenie 3008/3009 v3
   description: |
     Control RGBGenie ZB-3008/ZB-3009 через Z2M и MQTT.
     Полная интеграция с сохранением оригинальной логики управления.
@@ -66,7 +66,7 @@ variables:
     {% if command in ['on','off'] %}
       {{ input.light_3 }}
     {% else %}
-      {{ [input.light_1, input.light_2, input.light_3][(current_modifier|int(0)-1] if current_modifier|int(0) in [1,2,3] else input.light_3 }}
+      {{ [input.light_1, input.light_2, input.light_3][(current_modifier|int(0)-1)] if current_modifier|int(0) in [1,2,3] else input.light_3 }}
     {% endif %}
 
 action:
