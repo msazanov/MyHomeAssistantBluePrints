@@ -1,15 +1,22 @@
 blueprint:
-  name: Z2M - RGBGenie 3008 via MQTT
+  name: Z2M MQTT - RGBGenie 3008/3009
   description: |
-    Control the RGBGenie ZB-3008/ZB-3009 remotes with MQTT (via Zigbee2MQTT).
-    Работает напрямую с топиком MQTT.
+    Control RGBGenie ZB-3008/ZB-3009 через Z2M и MQTT.
+    Полная интеграция с сохранением оригинальной логики управления.
   domain: automation
   input:
     mqtt_topic:
       name: "MQTT Topic"
-      description: "Укажи топик MQTT, например: zigbee2mqtt/ZB-3009/action"
+      description: "Основной топик устройства (например: zigbee2mqtt/ZB-3009)"
+      required: true
       selector:
         text:
+    modifier_input:
+      name: "Сущность для модификатора"
+      description: "Helper input_text для хранения текущего модификатора"
+      selector:
+        entity:
+          domain: input_text
     light_1:
       name: "Light 1"
       selector:
@@ -26,12 +33,12 @@ blueprint:
         entity:
           domain: light
     force_brightness:
-      name: "Force turn on brightness"
+      name: "Фиксированная яркость"
       default: false
       selector:
         boolean:
     brightness:
-      name: "Brightness"
+      name: "Яркость по умолчанию"
       default: 50
       selector:
         number:
@@ -39,104 +46,110 @@ blueprint:
           max: 100
           unit_of_measurement: "%"
     min_brightness:
-      name: "Minimum Brightness"
+      name: "Минимальная яркость"
       default: 1
       selector:
         number:
           min: 0
           max: 100
           unit_of_measurement: "%"
-    button_power:
-      name: "Power Button Action"
-      default: []
-      selector:
-        action: {}
-    button_white_short:
-      name: "White Button Short Press"
-      default: []
-      selector:
-        action: {}
-    button_white_long:
-      name: "White Button Long Press"
-      default: []
-      selector:
-        action: {}
-    button_play:
-      name: "Play Button Press"
-      default: []
-      selector:
-        action: {}
-    color_add_steps:
-      name: "Additional Color Steps"
-      default: []
-      selector:
-        action: {}
-
-mode: single
-max_exceeded: silent
 
 trigger:
   - platform: mqtt
     topic: !input mqtt_topic
+    value_template: "{{ value_json.action if value_json.action != '' }}"
 
 variables:
-  force_brightness: !input "force_brightness"
-  brightness: !input "brightness"
-  min_brightness: !input "min_brightness"
-  light_1: !input "light_1"
-  light_2: !input "light_2"
-  light_3: !input "light_3"
+  command: "{{ trigger.payload }}"
+  payload: "{{ trigger.payload_json }}"
+  current_modifier: "{{ states(input.modifier_input) | default('3') }}"
+  light_entity: >
+    {% if command in ['on','off'] %}
+      {{ input.light_3 }}
+    {% else %}
+      {{ [input.light_1, input.light_2, input.light_3][(current_modifier|int(0)-1] if current_modifier|int(0) in [1,2,3] else input.light_3 }}
+    {% endif %}
 
 action:
-  - variables:
-      payload: "{{ trigger.payload | from_json }}"
-      command: "{{ payload.command }}"
-      endpoint_id: "{{ payload.endpoint }}"
-      light_entity: >-
-        {% if endpoint_id == 1 %}
-          {{ light_1 }}
-        {% elif endpoint_id == 2 %}
-          {{ light_2 }}
-        {% else %}
-          {{ light_3 }}
-        {% endif %}
   - choose:
-      - conditions: '{{ command in ["on", "off"] }}'
-        sequence: !input "button_power"
-      - conditions: '{{ command == "color_move" }}'
+      - conditions: "{{ command matches 'recall_[123]' }}"
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input modifier_input
+            data:
+              value: "{{ command.split('_')[1] }}"
+          
+      - conditions: "{{ command in ['on','off'] }}"
+        sequence:
+          - service: light.toggle
+            data:
+              entity_id: "{{ light_entity }}"
+              transition: 1
+              brightness_pct: >
+                {% if force_brightness and command == 'on' %}
+                  {{ brightness }}
+                {% else %}
+                  {{ None }}
+                {% endif %}
+
+      - conditions: "{{ command == 'color_move' }}"
         sequence:
           - service: light.turn_on
             data:
               entity_id: "{{ light_entity }}"
-              xy_color:
-                - "{{ payload.action_color.x / 65535 }}"
-                - "{{ payload.action_color.y / 65535 }}"
-          - choose:
-              - conditions: "{{ true }}"
-                sequence: !input "color_add_steps"
-      - conditions: '{{ command in ["brightness_move_up", "brightness_move_down"] }}'
+              transition: 1
+              xy_color: >
+                [
+                  {{ payload.action_color.x }},
+                  {{ payload.action_color.y }}
+                ]
+          - service: input_text.set_value
+            target:
+              entity_id: !input modifier_input
+            data:
+              value: "3"
+
+      - conditions: "{{ command in ['brightness_move_up','brightness_move_down'] }}"
         sequence:
           - repeat:
               count: 15
               sequence:
-                - choose:
-                    - conditions: '{{ command == "brightness_move_up" }}'
-                      sequence:
-                        - service: light.turn_on
-                          data:
-                            entity_id: "{{ light_entity }}"
-                            brightness_step_pct: 10
-                            transition: 1
-                    - conditions: '{{ command == "brightness_move_down" }}'
-                      sequence:
+                - if:
+                    - condition: template
+                      value_template: "{{ command == 'brightness_move_up' }}"
+                  then:
+                    - service: light.turn_on
+                      data:
+                        entity_id: "{{ light_entity }}"
+                        brightness_step_pct: 10
+                        transition: 1
+                  else:
+                    - if:
+                        - condition: template
+                          value_template: >
+                            {{ ((state_attr(light_entity, 'brightness')|int(0)/255*100)|round(0) -10) >= min_brightness }}
+                      then:
                         - service: light.turn_on
                           data:
                             entity_id: "{{ light_entity }}"
                             brightness_step_pct: -10
                             transition: 1
-      - conditions: '{{ command == "white_short" }}'
-        sequence: !input "button_white_short"
-      - conditions: '{{ command == "white_long" }}'
-        sequence: !input "button_white_long"
-      - conditions: '{{ command == "play" }}'
-        sequence: !input "button_play"
+                      else:
+                        - service: light.turn_on
+                          data:
+                            entity_id: "{{ light_entity }}"
+                            brightness_pct: "{{ min_brightness }}"
+                            transition: 1
+                - delay: "00:00:01"
+
+      - conditions: "{{ command == 'color_temperature_move' }}"
+        sequence:
+          - service: light.turn_on
+            data:
+              entity_id: "{{ light_entity }}"
+              color_temp: "{{ payload.action_color_temperature }}"
+              transition: 1
+
+mode: queued
+max: 10
