@@ -1,4 +1,75 @@
 blueprint:
+  name: Z2M MQTT - RGBGenie 3008/3009 v3.2
+  description: |
+    Control RGBGenie ZB-3008/ZB-3009 через Z2M и MQTT.
+    Полная интеграция с сохранением оригинальной логики управления.
+  domain: automation
+  input:
+    mqtt_topic:
+      name: "MQTT Topic"
+      description: "Основной топик устройства (например: zigbee2mqtt/ZB-3009)"
+      selector:
+        text:
+    modifier_input:
+      name: "Сущность для модификатора"
+      description: "Helper input_text для хранения текущего модификатора"
+      selector:
+        entity:
+          domain: input_text
+    light_1:
+      name: "Light 1"
+      selector:
+        entity:
+          domain: light
+    light_2:
+      name: "Light 2"
+      selector:
+        entity:
+          domain: light
+    light_3:
+      name: "Light 3"
+      selector:
+        entity:
+          domain: light
+    force_brightness:
+      name: "Фиксированная яркость"
+      default: false
+      selector:
+        boolean:
+    brightness:
+      name: "Яркость по умолчанию"
+      default: 50
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+    min_brightness:
+      name: "Минимальная яркость"
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+
+trigger:
+  - platform: mqtt
+    topic: !input mqtt_topic
+    value_template: "{{ value_json.action if value_json.action != '' }}"
+
+variables:
+  command: "{{ trigger.payload }}"
+  payload: "{{ trigger.payload_json }}"
+  current_modifier: "{{ states(input.modifier_input) | default('3') }}"
+  light_entity: >
+    {% if command in ['on','off'] %}
+      {{ input.light_3 }}
+    {% else %}
+      {{ [input.light_1, input.light_2, input.light_3][(current_modifier|int(0)-1)] if current_modifier|int(0) in [1,2,3] else input.light_3 }}
+    {% endif %}
+
+blueprint:
   name: Z2M MQTT - RGBGenie 3008/3009 v3.1
   description: |
     Control RGBGenie ZB-3008/ZB-3009 через Z2M и MQTT.
@@ -149,6 +220,9 @@ action:
               entity_id: "{{ light_entity }}"
               color_temp: "{{ payload.action_color_temperature }}"
               transition: 1
+
+mode: queued
+max: 10
 
 mode: queued
 max: 10
