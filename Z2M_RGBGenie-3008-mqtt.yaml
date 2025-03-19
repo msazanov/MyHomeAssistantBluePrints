@@ -1,5 +1,5 @@
 blueprint:
-  name: Z2M MQTT - RGBGenie 3008/3009 v5.0
+  name: Z2M MQTT - RGBGenie 3008/3009 v6.0
   description: |
     Управление RGBGenie через MQTT с поддержкой модификаторов,
     плавного диммирования и цветовых пресетов
@@ -65,14 +65,16 @@ variables:
     {% if trigger.payload in ['on','off'] %}
       {{ input.light_3 }}
     {% else %}
-      {{ [input.light_1, input.light_2, input.light_3][(current_modifier|int(0)-1)]
+      {{ [input.light_1, input.light_2, input.light_3][(current_modifier|int(0)-1]
          if current_modifier|int(0) in [1,2,3]
          else input.light_3 }}
     {% endif %}
 
 action:
   - choose:
-      - conditions: "{{ trigger.payload matches '^recall_[123]$' }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.payload is match('^recall_[123]$') }}"
         sequence:
           - service: input_text.set_value
             target:
@@ -80,7 +82,9 @@ action:
             data:
               value: "{{ trigger.payload.split('_')[1] }}"
 
-      - conditions: "{{ trigger.payload in ['on', 'off'] }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.payload in ['on', 'off'] }}"
         sequence:
           - service: light.toggle
             data:
@@ -91,36 +95,48 @@ action:
                   {{ input.brightness }}
                 {% endif %}
 
-      - conditions: "{{ trigger.payload == 'color_move' and 'action_color' in payload }}"
+      - conditions:
+          - condition: template
+            value_template: >
+                {{ trigger.payload == 'color_move' and 
+                'action_color' in payload and 
+                'x' in payload.action_color and 
+                'y' in payload.action_color }}
         sequence:
           - service: light.turn_on
             data:
               entity_id: "{{ light_entity }}"
               transition: 1
               xy_color: 
-                - "{{ payload.action_color.x }}"
-                - "{{ payload.action_color.y }}"
+                - "{{ payload.action_color.x | float }}"
+                - "{{ payload.action_color.y | float }}"
           - service: input_text.set_value
             target:
               entity_id: !input modifier_input
             data:
               value: "3"
 
-      - conditions: "{{ trigger.payload in ['brightness_move_up','brightness_move_down'] }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.payload in ['brightness_move_up','brightness_move_down'] }}"
         sequence:
           - repeat:
               count: 15
               sequence:
                 - choose:
-                    - conditions: "{{ trigger.payload == 'brightness_move_up' }}"
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ trigger.payload == 'brightness_move_up' }}"
                       sequence:
                         - service: light.turn_on
                           data:
                             entity_id: "{{ light_entity }}"
                             brightness_step_pct: 10
                             transition: 0.3
-                    - conditions: >
-                        {{ ((state_attr(light_entity, 'brightness')|int(0)/255*100 -10) >= input.min_brightness) }}
+                    - conditions:
+                        - condition: template
+                          value_template: >
+                            {{ ((state_attr(light_entity, 'brightness')|default(0)|int / 255 * 100 - 10) >= input.min_brightness|int }}
                       sequence:
                         - service: light.turn_on
                           data:
@@ -136,12 +152,16 @@ action:
                             transition: 0.5
                 - delay: "00:00:00.3"
 
-      - conditions: "{{ trigger.payload == 'color_temperature_move' and 'action_color_temperature' in payload }}"
+      - conditions:
+          - condition: template
+            value_template: >
+                {{ trigger.payload == 'color_temperature_move' and 
+                'action_color_temperature' in payload }}
         sequence:
           - service: light.turn_on
             data:
               entity_id: "{{ light_entity }}"
-              color_temp: "{{ payload.action_color_temperature }}"
+              color_temp: "{{ payload.action_color_temperature | int }}"
               transition: 1
 
 mode: queued
