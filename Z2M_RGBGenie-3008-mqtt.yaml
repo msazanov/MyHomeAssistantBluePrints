@@ -1,94 +1,84 @@
 blueprint:
-  name: Z2M - RGBGenie 3008 MQTT Version
+  name: Z2M - RGBGenie 3008 via MQTT
   description: |
-    Control the RGBGenie ZB-3008/ZB-3009 remotes with Z2M directly via MQTT topic.
-
+    Control the RGBGenie ZB-3008/ZB-3009 remotes with MQTT (via Zigbee2MQTT).
+    Работает напрямую с топиком MQTT.
   domain: automation
   input:
     mqtt_topic:
       name: "MQTT Topic"
-      description: "Specify the Zigbee2MQTT topic of the remote, e.g., zigbee2mqtt/Media_btn"
+      description: "Укажи топик MQTT, например: zigbee2mqtt/ZB-3009/action"
       selector:
         text:
     light_1:
       name: "Light 1"
-      description: 'The light(s) to control when button "1" pressed.'
       selector:
         entity:
           domain: light
     light_2:
       name: "Light 2"
-      description: 'The light(s) to control when button "2" pressed'
       selector:
         entity:
           domain: light
     light_3:
-      name: Light 3
-      description: 'The light(s) to control when button "3" pressed.'
+      name: "Light 3"
       selector:
         entity:
           domain: light
     force_brightness:
       name: "Force turn on brightness"
-      description: 'Force brightness level when turning on.'
       default: false
       selector:
         boolean:
     brightness:
       name: "Brightness"
-      description: "Brightness of the light(s) when turning on"
       default: 50
       selector:
         number:
-          min: 0.0
-          max: 100.0
-          mode: slider
-          step: 1.0
+          min: 0
+          max: 100
           unit_of_measurement: "%"
     min_brightness:
       name: "Minimum Brightness"
-      description: "Minimum brightness when dimming down."
       default: 1
       selector:
         number:
-          min: 0.0
-          max: 100.0
-          mode: slider
-          step: 1.0
+          min: 0
+          max: 100
           unit_of_measurement: "%"
     button_power:
-      name: "Power Button"
-      description: 'Action to run on button press "power".'
+      name: "Power Button Action"
       default: []
       selector:
         action: {}
     button_white_short:
       name: "White Button Short Press"
-      description: 'Action for white short press.'
       default: []
       selector:
         action: {}
     button_white_long:
       name: "White Button Long Press"
-      description: 'Action for white long press.'
       default: []
       selector:
         action: {}
     button_play:
       name: "Play Button Press"
-      description: 'Action for play button press.'
       default: []
       selector:
         action: {}
     color_add_steps:
       name: "Additional Color Steps"
-      description: "Additional action to run on color changes"
       default: []
       selector:
         action: {}
 
 mode: single
 max_exceeded: silent
+
+trigger:
+  - platform: mqtt
+    topic: !input mqtt_topic
+
 variables:
   force_brightness: !input "force_brightness"
   brightness: !input "brightness"
@@ -97,31 +87,56 @@ variables:
   light_2: !input "light_2"
   light_3: !input "light_3"
 
-trigger:
-  - platform: mqtt
-    topic: !input mqtt_topic
-
 action:
   - variables:
-      command: "{{ trigger.payload_json.action }}"
-      light_entity: |-
-        {% if trigger.payload_json.action_group == 1 %}
+      payload: "{{ trigger.payload | from_json }}"
+      command: "{{ payload.command }}"
+      endpoint_id: "{{ payload.endpoint }}"
+      light_entity: >-
+        {% if endpoint_id == 1 %}
           {{ light_1 }}
-        {% elif trigger.payload_json.action_group == 2 %}
+        {% elif endpoint_id == 2 %}
           {{ light_2 }}
-        {% elif trigger.payload_json.action_group == 3 %}
-          {{ light_3 }}
         {% else %}
           {{ light_3 }}
         {% endif %}
   - choose:
-      - conditions: "{{ command == 'on' }}"
-        sequence: !input button_power
-      - conditions: "{{ command == 'white_short_press' }}"
-        sequence: !input button_white_short
-      - conditions: "{{ command == 'white_long_press' }}"
-        sequence: !input button_white_long
-      - conditions: "{{ command == 'play' }}"
-        sequence: !input button_play
-      - conditions: "{{ command == 'color_wheel' }}"
-        sequence: !input color_add_steps
+      - conditions: '{{ command in ["on", "off"] }}'
+        sequence: !input "button_power"
+      - conditions: '{{ command == "color_move" }}'
+        sequence:
+          - service: light.turn_on
+            data:
+              entity_id: "{{ light_entity }}"
+              xy_color:
+                - "{{ payload.action_color.x / 65535 }}"
+                - "{{ payload.action_color.y / 65535 }}"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input "color_add_steps"
+      - conditions: '{{ command in ["brightness_move_up", "brightness_move_down"] }}'
+        sequence:
+          - repeat:
+              count: 15
+              sequence:
+                - choose:
+                    - conditions: '{{ command == "brightness_move_up" }}'
+                      sequence:
+                        - service: light.turn_on
+                          data:
+                            entity_id: "{{ light_entity }}"
+                            brightness_step_pct: 10
+                            transition: 1
+                    - conditions: '{{ command == "brightness_move_down" }}'
+                      sequence:
+                        - service: light.turn_on
+                          data:
+                            entity_id: "{{ light_entity }}"
+                            brightness_step_pct: -10
+                            transition: 1
+      - conditions: '{{ command == "white_short" }}'
+        sequence: !input "button_white_short"
+      - conditions: '{{ command == "white_long" }}'
+        sequence: !input "button_white_long"
+      - conditions: '{{ command == "play" }}'
+        sequence: !input "button_play"
