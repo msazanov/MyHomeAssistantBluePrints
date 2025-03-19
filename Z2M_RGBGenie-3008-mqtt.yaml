@@ -8,7 +8,6 @@ blueprint:
     mqtt_topic:
       name: "MQTT Topic"
       description: "Основной топик устройства (например: zigbee2mqtt/ZB-3009)"
-      required: true
       selector:
         text:
     modifier_input:
