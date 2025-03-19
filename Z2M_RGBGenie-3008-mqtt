@@ -1,0 +1,119 @@
+blueprint:
+  name: Z2M - RGBGenie 3008 (via MQTT)
+  description: |
+    Modified blueprint to work via MQTT topic instead of action sensor. 
+    Works with zigbee2mqtt messages directly.
+
+  domain: automation
+  input:
+    mqtt_topic:
+      name: "MQTT Topic"
+      description: "The MQTT topic of the RGBGenie remote (e.g., zigbee2mqtt/RGBGenie-3008)"
+      selector:
+        text:
+    light_1:
+      name: "Light 1"
+      description: 'The light(s) to control when button "1" pressed.'
+      selector:
+        entity:
+          domain: light
+    light_2:
+      name: "Light 2"
+      description: 'The light(s) to control when button "2" pressed'
+      selector:
+        entity:
+          domain: light
+    light_3:
+      name: Light 3
+      description: 'The light(s) to control when button "3" pressed.'
+      selector:
+        entity:
+          domain: light
+    force_brightness:
+      name: "Force turn on brightness"
+      description: 'Force the brightness to the set level below, when the "on" button is pushed.'
+      default: false
+      selector:
+        boolean:
+    brightness:
+      name: "Brightness"
+      description: "Brightness of the light(s) when turning on"
+      default: 50
+      selector:
+        number:
+          min: 0.0
+          max: 100.0
+          mode: slider
+          step: 1.0
+          unit_of_measurement: "%"
+    min_brightness:
+      name: "Minimum Brightness"
+      description: "The minimum brightness of the light(s) when dimming down. Set to zero to disable."
+      default: 1
+      selector:
+        number:
+          min: 0.0
+          max: 100.0
+          mode: slider
+          step: 1.0
+          unit_of_measurement: "%"
+    button_power:
+      name: "Power Button"
+      description: 'Action to run on button press "power".'
+      default: []
+      selector:
+        action: {}
+    button_white_short:
+      name: "White Button Short Press"
+      description: 'Action to run on short button press "white"'
+      default: []
+      selector:
+        action: {}
+    button_white_long:
+      name: "White Button Long Press"
+      description: 'Action to run on long button press "white"'
+      default: []
+      selector:
+        action: {}
+    button_play:
+      name: "Play Button Press"
+      description: 'Action to run on button press "play"'
+      default: []
+      selector:
+        action: {}
+
+mode: single
+max_exceeded: silent
+
+variables:
+  force_brightness: !input "force_brightness"
+  brightness: !input "brightness"
+  min_brightness: !input "min_brightness"
+  light_1: !input "light_1"
+  light_2: !input "light_2"
+  light_3: !input "light_3"
+
+trigger:
+  - platform: mqtt
+    topic: !input mqtt_topic
+
+action:
+  - variables:
+      command: "{{ trigger.payload_json.action }}"
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'on' }}"
+        sequence: !input button_power
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'white_short_press' }}"
+        sequence: !input button_white_short
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'white_long_press' }}"
+        sequence: !input button_white_long
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'play' }}"
+        sequence: !input button_play
