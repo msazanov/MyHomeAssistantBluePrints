@@ -1,8 +1,8 @@
 blueprint:
-  name: Z2M MQTT - RGBGenie 3008/3009 v3.5
+  name: Z2M MQTT - RGBGenie 3008/3009 v4.0
   description: |
-    Control RGBGenie ZB-3008/ZB-3009 через Z2M и MQTT.
-    Поддержка модификаторов, плавного диммирования и цветовых пресетов.
+    Управление RGBGenie ZB-3008/ZB-3009 через MQTT
+    с поддержкой модификаторов и плавного диммирования
   domain: automation
   input:
     mqtt_topic:
@@ -17,28 +17,27 @@ blueprint:
         entity:
           domain: input_text
     light_1:
-      name: "Light Group 1"
+      name: "Группа света 1"
       selector:
         entity:
           domain: light
     light_2:
-      name: "Light Group 2"
+      name: "Группа света 2"
       selector:
         entity:
           domain: light
     light_3:
-      name: "Light Group 3"
+      name: "Группа света 3"
       selector:
         entity:
           domain: light
     force_brightness:
-      name: "Принудительная яркость"
-      description: "Всегда включать с указанной яркостью"
+      name: "Фиксированная яркость"
       default: false
       selector:
         boolean:
     brightness:
-      name: "Уровень яркости"
+      name: "Яркость по умолчанию"
       default: 50
       selector:
         number:
@@ -63,11 +62,11 @@ variables:
   command: "{{ trigger.payload }}"
   payload: "{{ trigger.payload_json }}"
   current_modifier: "{{ states(input.modifier_input) | default('3') }}"
-  light_entity: >
+  light_entity: >-
     {% if command in ['on','off'] %}
       {{ input.light_3 }}
     {% else %}
-      {{ [input.light_1, input.light_2, input.light_3][(current_modifier|int(0)-1] 
+      {{ [input.light_1, input.light_2, input.light_3][(current_modifier|int(0)-1)] 
          if current_modifier|int(0) in [1,2,3] 
          else input.light_3 }}
     {% endif %}
@@ -83,20 +82,16 @@ action:
               entity_id: !input modifier_input
             data:
               value: "{{ command.split('_')[1] }}"
-          - service: light.turn_on
-            data:
-              entity_id: "{{ light_entity }}"
-              transition: 0.5
 
       - conditions:
           - condition: template
-            value_template: "{{ command in ['on','off'] }}"
+            value_template: "{{ command in ['on', 'off'] }}"
         sequence:
           - service: light.toggle
             data:
               entity_id: "{{ light_entity }}"
               transition: 1
-              brightness_pct: >
+              brightness_pct: >-
                 {% if input.force_brightness and command == 'on' %}
                   {{ input.brightness }}
                 {% endif %}
@@ -109,7 +104,9 @@ action:
             data:
               entity_id: "{{ light_entity }}"
               transition: 1
-              xy_color: "[{{ payload.action_color.x }}, {{ payload.action_color.y }}]"
+              xy_color: 
+                - "{{ payload.action_color.x }}"
+                - "{{ payload.action_color.y }}"
           - service: input_text.set_value
             target:
               entity_id: !input modifier_input
@@ -135,8 +132,9 @@ action:
                             transition: 0.3
                     - conditions:
                         - condition: template
-                          value_template: >
-                            {{ ((state_attr(light_entity, 'brightness')|int(0)/255*100 -10) >= input.min_brightness }}
+                          value_template: >-
+                            {{ ((state_attr(light_entity, 'brightness')|int(0)/255*100 -10) 
+                            >= input.min_brightness) }}
                       sequence:
                         - service: light.turn_on
                           data:
