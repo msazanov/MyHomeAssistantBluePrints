@@ -1,5 +1,5 @@
 blueprint:
-  name: Z2M MQTT - RGBGenie 3008/3009 v3.4
+  name: Z2M MQTT - RGBGenie 3008/3009 v3.5
   description: |
     Control RGBGenie ZB-3008/ZB-3009 через Z2M и MQTT.
     Поддержка модификаторов, плавного диммирования и цветовых пресетов.
@@ -67,7 +67,7 @@ variables:
     {% if command in ['on','off'] %}
       {{ input.light_3 }}
     {% else %}
-      {{ [input.light_1, input.light_2, input.light_3][(current_modifier|int(0)-1)] 
+      {{ [input.light_1, input.light_2, input.light_3][(current_modifier|int(0)-1] 
          if current_modifier|int(0) in [1,2,3] 
          else input.light_3 }}
     {% endif %}
@@ -76,7 +76,7 @@ action:
   - choose:
       - conditions:
           - condition: template
-            value_template: "{{ command matches 'recall_[123]' }}"
+            value_template: "{{ command is regex_match('^recall_[123]$') }}"
         sequence:
           - service: input_text.set_value
             target:
