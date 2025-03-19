@@ -1,5 +1,5 @@
 blueprint:
-  name: Z2M MQTT - RGBGenie 3008/3009
+  name: Z2M MQTT - RGBGenie 3008/3009 v2
   description: |
     Control RGBGenie ZB-3008/ZB-3009 через Z2M и MQTT.
     Полная интеграция с сохранением оригинальной логики управления.
